@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>테라리아 서버 콘솔</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>테라리아 서버 콘솔</h1>
+            <div class="status">
+                <span id="connectionStatus" class="disconnected">● 연결 중...</span>
+            </div>
+        </header>
+        
+        <main>
+            <div class="log-container" id="logContainer">
+                <div class="log-placeholder">서버 로그가 여기에 표시됩니다...</div>
+            </div>
+            
+            <div class="input-area">
+                <input 
+                    type="text" 
+                    id="commandInput" 
+                    placeholder="서버 명령어 입력 (예: /help, /kick 플레이어명)" 
+                    disabled
+                >
+                <button id="sendButton" disabled>전송</button>
+                <button id="clearButton">로그 지우기</button>
+            </div>
+            
+            <div class="quick-commands">
+                <button class="quick-cmd" data-cmd="/help">/help</button>
+                <button class="quick-cmd" data-cmd="/players">/players</button>
+                <button class="quick-cmd" data-cmd="/save">/save</button>
+                <button class="quick-cmd" data-cmd="exit">exit</button>
+            </div>
+        </main>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html>
