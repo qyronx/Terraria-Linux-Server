@@ -12,16 +12,14 @@ const TERRARIA_SERVER_DIR = path.join(__dirname, 'terraria-server');
 const SERVER_ZIP_URL = 'https://terraria.org/api/download/pc-dedicated-server/terraria-server-1449.zip';
 const SERVER_ZIP_PATH = path.join(__dirname, 'terraria-server-1449.zip');
 
-// ✅ 서버 실행 파일 경로를 찾는 함수 (정확한 경로 탐색)
+// ✅ 서버 실행 파일 경로를 찾는 함수
 function findServerBinary() {
-    // 1. 가장 먼저 1449/Linux/TerrariaServer.bin.x86_64 확인 (가장 일반적인 경로)
+    // 1. 가장 먼저 1449/Linux/TerrariaServer.bin.x86_64 확인
     const primaryPaths = [
         path.join(__dirname, '1449', 'Linux', 'TerrariaServer.bin.x86_64'),
         path.join(__dirname, 'terraria-server-1449', 'Linux', 'TerrariaServer.bin.x86_64'),
         path.join(TERRARIA_SERVER_DIR, '1449', 'Linux', 'TerrariaServer.bin.x86_64'),
         path.join(TERRARIA_SERVER_DIR, 'Linux', 'TerrariaServer.bin.x86_64'),
-        path.join(__dirname, '1449', 'Linux', 'TerrariaServer.exe'),
-        path.join(__dirname, 'terraria-server-1449', 'Linux', 'TerrariaServer.exe'),
     ];
     
     for (const p of primaryPaths) {
@@ -31,32 +29,29 @@ function findServerBinary() {
         }
     }
     
-    // 2. terraria-server 폴더 내 모든 하위 디렉토리 탐색
-    if (fs.existsSync(TERRARIA_SERVER_DIR)) {
-        const searchDir = (dir) => {
-            try {
-                const items = fs.readdirSync(dir);
-                for (const item of items) {
-                    const itemPath = path.join(dir, item);
-                    try {
-                        const stat = fs.statSync(itemPath);
-                        if (stat.isDirectory()) {
-                            // Linux 폴더 발견하면 내부 탐색
-                            if (item === 'Linux') {
-                                const binPath = path.join(itemPath, 'TerrariaServer.bin.x86_64');
-                                if (fs.existsSync(binPath)) return binPath;
-                                const exePath = path.join(itemPath, 'TerrariaServer.exe');
-                                if (fs.existsSync(exePath)) return exePath;
-                            }
-                            // 하위 디렉토리 재귀 탐색
-                            const found = searchDir(itemPath);
-                            if (found) return found;
+    // 2. 모든 하위 디렉토리 탐색
+    function searchDir(dir) {
+        try {
+            const items = fs.readdirSync(dir);
+            for (const item of items) {
+                const itemPath = path.join(dir, item);
+                try {
+                    const stat = fs.statSync(itemPath);
+                    if (stat.isDirectory()) {
+                        if (item === 'Linux') {
+                            const binPath = path.join(itemPath, 'TerrariaServer.bin.x86_64');
+                            if (fs.existsSync(binPath)) return binPath;
                         }
-                    } catch (e) {}
-                }
-            } catch (e) {}
-            return null;
-        };
+                        const found = searchDir(itemPath);
+                        if (found) return found;
+                    }
+                } catch (e) {}
+            }
+        } catch (e) {}
+        return null;
+    }
+    
+    if (fs.existsSync(TERRARIA_SERVER_DIR)) {
         const found = searchDir(TERRARIA_SERVER_DIR);
         if (found) {
             console.log(`✅ 실행 파일 발견: ${found}`);
@@ -64,23 +59,15 @@ function findServerBinary() {
         }
     }
     
-    // 3. 현재 디렉토리에서 1449 폴더 직접 탐색
+    // 3. 현재 디렉토리에서 직접 탐색
     const versionDirs = ['1449', 'terraria-server-1449'];
     for (const versionDir of versionDirs) {
         const basePath = path.join(__dirname, versionDir);
         if (!fs.existsSync(basePath)) continue;
-        
-        // Linux 폴더 확인
         const linuxBin = path.join(basePath, 'Linux', 'TerrariaServer.bin.x86_64');
         if (fs.existsSync(linuxBin)) {
             console.log(`✅ 실행 파일 발견: ${linuxBin}`);
             return linuxBin;
-        }
-        
-        const linuxExe = path.join(basePath, 'Linux', 'TerrariaServer.exe');
-        if (fs.existsSync(linuxExe)) {
-            console.log(`✅ 실행 파일 발견: ${linuxExe}`);
-            return linuxExe;
         }
     }
     
@@ -139,14 +126,12 @@ function extractTerrariaServer() {
                 return;
             }
             console.log('✅ 압축 풀기 완료!');
-            console.log('📋 압축 풀기 결과 (일부):', stdout.split('\n').slice(0, 15).join('\n'));
             resolve();
         });
     });
 }
 
 async function ensureTerrariaServerFiles() {
-    // 1. 먼저 실행 파일이 이미 있는지 확인
     const existingBinary = findServerBinary();
     if (existingBinary) {
         console.log(`✅ 테라리아 서버 파일이 이미 존재합니다: ${existingBinary}`);
@@ -156,23 +141,17 @@ async function ensureTerrariaServerFiles() {
     console.log('⚠️ 테라리아 서버 파일이 없습니다. 자동 다운로드를 시작합니다...');
     
     try {
-        // 2. 다운로드
         await downloadTerrariaServer();
-        
-        // 3. 압축 풀기
         await extractTerrariaServer();
         
-        // 4. 다운로드한 zip 파일 삭제
         if (fs.existsSync(SERVER_ZIP_PATH)) {
             fs.unlinkSync(SERVER_ZIP_PATH);
             console.log('🗑️ 임시 zip 파일 삭제됨');
         }
         
-        // 5. 압축 풀린 폴더 구조 확인 및 실행 파일 찾기
         const binaryPath = findServerBinary();
         if (!binaryPath) {
-            // 디버깅: 현재 디렉토리 구조 출력
-            console.log('📁 현재 디렉토리 구조:');
+            console.log('📁 현재 디렉토리 구조 (디버깅):');
             const items = fs.readdirSync(__dirname);
             for (const item of items) {
                 const stat = fs.statSync(path.join(__dirname, item));
@@ -181,19 +160,7 @@ async function ensureTerrariaServerFiles() {
                     try {
                         const subItems = fs.readdirSync(path.join(__dirname, item));
                         for (const sub of subItems) {
-                            const subPath = path.join(__dirname, item, sub);
-                            const subStat = fs.statSync(subPath);
-                            if (subStat.isDirectory()) {
-                                console.log(`    📂 ${sub}/`);
-                                try {
-                                    const subSubItems = fs.readdirSync(subPath);
-                                    for (const subSub of subSubItems) {
-                                        console.log(`      📄 ${subSub}`);
-                                    }
-                                } catch (e) {}
-                            } else {
-                                console.log(`    📄 ${sub}`);
-                            }
+                            console.log(`    📄 ${sub}`);
                         }
                     } catch (e) {}
                 } else {
@@ -203,14 +170,11 @@ async function ensureTerrariaServerFiles() {
             throw new Error('압축 풀기 후에도 실행 파일을 찾을 수 없습니다.');
         }
         
-        // 6. 실행 권한 추가 (Linux 바이너리인 경우)
-        if (binaryPath.endsWith('.bin.x86_64') || !binaryPath.endsWith('.exe')) {
-            try {
-                execSync(`chmod +x "${binaryPath}"`);
-                console.log('✅ 실행 권한 설정 완료');
-            } catch (err) {
-                console.warn('⚠️ 실행 권한 설정 실패:', err.message);
-            }
+        try {
+            execSync(`chmod +x "${binaryPath}"`);
+            console.log('✅ 실행 권한 설정 완료');
+        } catch (err) {
+            console.warn('⚠️ 실행 권한 설정 실패:', err.message);
         }
         
         console.log(`✅ 테라리아 서버 파일 준비 완료: ${binaryPath}`);
@@ -226,108 +190,108 @@ async function ensureTerrariaServerFiles() {
 // 1. HTTP 서버 생성 (정적 파일 제공용)
 // ============================================
 const httpServer = http.createServer((req, res) => {
-    // index.html 제공
+    // CORS 헤더 추가 (Render에서 필요할 수 있음)
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    
+    if (req.method === 'OPTIONS') {
+        res.writeHead(200);
+        res.end();
+        return;
+    }
+    
+    let filePath = '';
+    let contentType = '';
+    
     if (req.url === '/' || req.url === '/index.html') {
-        fs.readFile(path.join(__dirname, 'index.html'), (err, data) => {
-            if (err) {
-                res.writeHead(500);
-                res.end('Error loading index.html');
-                return;
-            }
-            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-            res.end(data);
-        });
+        filePath = path.join(__dirname, 'index.html');
+        contentType = 'text/html; charset=utf-8';
+    } else if (req.url === '/style.css') {
+        filePath = path.join(__dirname, 'style.css');
+        contentType = 'text/css; charset=utf-8';
+    } else if (req.url === '/script.js') {
+        filePath = path.join(__dirname, 'script.js');
+        contentType = 'application/javascript; charset=utf-8';
+    } else {
+        res.writeHead(404);
+        res.end('Not Found');
         return;
     }
     
-    // style.css 제공
-    if (req.url === '/style.css') {
-        fs.readFile(path.join(__dirname, 'style.css'), (err, data) => {
-            if (err) {
-                res.writeHead(500);
-                res.end('Error loading style.css');
-                return;
-            }
-            res.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8' });
-            res.end(data);
-        });
-        return;
-    }
-    
-    // script.js 제공
-    if (req.url === '/script.js') {
-        fs.readFile(path.join(__dirname, 'script.js'), (err, data) => {
-            if (err) {
-                res.writeHead(500);
-                res.end('Error loading script.js');
-                return;
-            }
-            res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8' });
-            res.end(data);
-        });
-        return;
-    }
-    
-    // 404 처리
-    res.writeHead(404);
-    res.end('Not Found');
+    fs.readFile(filePath, (err, data) => {
+        if (err) {
+            res.writeHead(500);
+            res.end(`Error loading ${path.basename(filePath)}`);
+            return;
+        }
+        res.writeHead(200, { 'Content-Type': contentType });
+        res.end(data);
+    });
 });
 
 // ============================================
 // 2. WebSocket 서버 생성
 // ============================================
-const wss = new WebSocket.Server({ server: httpServer });
+const wss = new WebSocket.Server({ 
+    server: httpServer,
+    path: '/'  // 명시적으로 경로 지정
+});
 
 // ============================================
 // 3. 테라리아 서버 프로세스 관리
 // ============================================
 let serverProcess = null;
 let wsClients = [];
-let isServerReady = false;
 let serverBinaryPath = null;
 
-// WebSocket 연결 처리
 wss.on('connection', (ws) => {
-    console.log('🟢 프론트엔드 연결됨');
+    console.log('🟢 프론트엔드 연결됨 (클라이언트 수: ' + (wsClients.length + 1) + ')');
     wsClients.push(ws);
     
-    // 4. 클라이언트가 연결되면 테라리아 서버 시작
+    // 연결 성공 메시지 전송
+    ws.send('[시스템] WebSocket 연결이 성공적으로 확립되었습니다.');
+    
     if (!serverProcess && serverBinaryPath) {
         console.log('🚀 테라리아 서버 시작 중...');
         startTerrariaServer(serverBinaryPath);
     } else if (!serverBinaryPath) {
         ws.send('[오류] 서버 바이너리 경로가 설정되지 않았습니다.');
         console.error('❌ 서버 바이너리 경로 없음');
+    } else if (serverProcess) {
+        ws.send('[시스템] 테라리아 서버가 이미 실행 중입니다.');
     }
     
-    // 5. 클라이언트로부터 명령어 수신
     ws.on('message', (message) => {
         const command = message.toString().trim();
-        console.log(`📝 명령어 수신: ${command}`);
+        console.log(`📝 명령어 수신: "${command}"`);
         
         if (serverProcess) {
             serverProcess.stdin.write(command + '\n');
+            ws.send(`[시스템] 명령어 전송됨: ${command}`);
         } else {
             ws.send('[오류] 서버가 실행 중이 아닙니다.');
         }
     });
     
-    // 6. 연결 종료 처리
     ws.on('close', () => {
-        console.log('🔴 프론트엔드 연결 종료');
+        console.log('🔴 프론트엔드 연결 종료 (남은 클라이언트: ' + (wsClients.length - 1) + ')');
         wsClients = wsClients.filter(client => client !== ws);
         
         if (wsClients.length === 0 && serverProcess) {
             console.log('⏹️ 모든 클라이언트 연결 해제 - 서버 종료');
             serverProcess.kill();
             serverProcess = null;
-            isServerReady = false;
         }
+    });
+    
+    ws.on('error', (error) => {
+        console.error('⚠️ WebSocket 오류:', error.message);
     });
 });
 
 // ============================================
-// 7. 테라리아 서버 시작 함수 (Linux 네이티브)
+// 4. 테라리아 서버 시작 함수
 // ============================================
 function startTerrariaServer(binaryPath) {
     if (!fs.existsSync(binaryPath)) {
@@ -337,17 +301,21 @@ function startTerrariaServer(binaryPath) {
     }
     
     const cwd = path.dirname(binaryPath);
-    
     console.log(`🚀 서버 실행: ${binaryPath}`);
     console.log(`📂 작업 디렉토리: ${cwd}`);
     
-    // Linux 네이티브 바이너리 직접 실행
+    // 환경 변수 설정 (서버가 제대로 실행되도록)
+    const env = {
+        ...process.env,
+        LD_LIBRARY_PATH: cwd + ':' + (process.env.LD_LIBRARY_PATH || ''),
+        HOME: process.env.HOME || '/tmp'
+    };
+    
     serverProcess = spawn(binaryPath, [], {
         cwd: cwd,
-        stdio: ['pipe', 'pipe', 'pipe']
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: env
     });
-    
-    isServerReady = true;
     
     serverProcess.stdout.on('data', (data) => {
         const log = data.toString();
@@ -365,30 +333,32 @@ function startTerrariaServer(binaryPath) {
         console.log(`⏹️ 테라리아 서버 종료 (코드: ${code})`);
         broadcast(`[시스템] 서버가 종료되었습니다. (코드: ${code})`);
         serverProcess = null;
-        isServerReady = false;
     });
     
     serverProcess.on('error', (err) => {
         console.error('❌ 서버 프로세스 오류:', err.message);
         broadcast(`[오류] 서버 프로세스 오류: ${err.message}`);
         serverProcess = null;
-        isServerReady = false;
     });
 }
 
 // ============================================
-// 8. 모든 클라이언트에 메시지 브로드캐스트
+// 5. 모든 클라이언트에 메시지 브로드캐스트
 // ============================================
 function broadcast(message) {
     wsClients.forEach(client => {
         if (client.readyState === WebSocket.OPEN) {
-            client.send(message);
+            try {
+                client.send(message);
+            } catch (e) {
+                console.error('브로드캐스트 오류:', e.message);
+            }
         }
     });
 }
 
 // ============================================
-// 9. 서버 시작 (파일 준비 후)
+// 6. 서버 시작
 // ============================================
 const PORT = process.env.PORT || 10000;
 
@@ -397,6 +367,7 @@ async function startServer() {
     console.log('⚔️ 테라리아 웹 콘솔 서버');
     console.log('========================================');
     console.log(`📂 현재 디렉토리: ${__dirname}`);
+    console.log(`🔌 포트: ${PORT}`);
     
     try {
         const files = fs.readdirSync(__dirname);
@@ -408,11 +379,13 @@ async function startServer() {
         console.log(`✅ 서버 바이너리 경로: ${serverBinaryPath}`);
     } catch (error) {
         console.error('❌ 테라리아 서버 파일 준비 실패:', error.message);
+        console.log('⚠️ 웹 서버는 계속 실행됩니다 (테라리아 서버 없이)');
     }
     
-    httpServer.listen(PORT, () => {
-        console.log(`🌐 웹 서버 실행 중: http://localhost:${PORT}`);
-        console.log(`🔌 WebSocket 서버도 함께 실행됨`);
+    // 모든 인터페이스에서 수신 대기 (0.0.0.0)
+    httpServer.listen(PORT, '0.0.0.0', () => {
+        console.log(`🌐 웹 서버 실행 중: http://0.0.0.0:${PORT}`);
+        console.log(`🔌 WebSocket 서버도 함께 실행됨 (ws://0.0.0.0:${PORT})`);
         console.log('========================================');
         if (serverBinaryPath) {
             console.log('💡 프론트엔드에서 접속하면 서버가 자동 시작됩니다.');
@@ -421,18 +394,37 @@ async function startServer() {
         }
         console.log('========================================');
     });
+    
+    // 서버 오류 처리
+    httpServer.on('error', (error) => {
+        console.error('❌ HTTP 서버 오류:', error.message);
+        if (error.code === 'EADDRINUSE') {
+            console.error(`⚠️ 포트 ${PORT}가 이미 사용 중입니다.`);
+        }
+    });
 }
 
+// 서버 시작
 startServer();
 
+// 프로세스 종료 처리
 process.on('SIGINT', () => {
     console.log('\n🛑 서버 종료 신호 수신');
-    if (serverProcess) serverProcess.kill();
+    if (serverProcess) {
+        serverProcess.kill();
+    }
     process.exit(0);
 });
 
 process.on('SIGTERM', () => {
     console.log('\n🛑 서버 종료 신호 수신');
-    if (serverProcess) serverProcess.kill();
+    if (serverProcess) {
+        serverProcess.kill();
+    }
     process.exit(0);
+});
+
+process.on('uncaughtException', (error) => {
+    console.error('💥 예외 발생:', error.message);
+    console.error(error.stack);
 });
