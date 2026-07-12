@@ -113,22 +113,26 @@ function addLogEntry(message, type = '') {
     }
 }
 
-// 명령어 전송
+// 명령어 전송 (빈칸만 있어도 전송됨)
 function sendCommand(command) {
     if (!isConnected || !socket || socket.readyState !== WebSocket.OPEN) {
         addLogEntry('[오류] 서버에 연결되어 있지 않습니다.', 'error');
         return;
     }
     
-    if (!command || command.trim() === '') {
-        return;
+    // 빈칸만 있어도 전송 (공백도 명령어로 간주)
+    // 서버에서 빈 명령어는 무시하거나 처리함
+    const trimmedCommand = command.trim();
+    
+    // 명령어 로그에 표시 (빈칸도 표시)
+    if (trimmedCommand === '') {
+        addLogEntry(`> (빈 명령어)`, 'system');
+    } else {
+        addLogEntry(`> ${trimmedCommand}`, 'system');
     }
     
-    // 명령어 로그에 표시 (선택사항)
-    addLogEntry(`> ${command.trim()}`, 'system');
-    
-    // WebSocket으로 전송
-    socket.send(command.trim());
+    // WebSocket으로 전송 (빈 문자열도 전송)
+    socket.send(trimmedCommand);
 }
 
 // 로그 모두 지우기
@@ -149,7 +153,7 @@ function setupEventListeners() {
         commandInput.value = '';
     });
     
-    // 엔터 키
+    // 엔터 키 (빈칸도 전송)
     commandInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
