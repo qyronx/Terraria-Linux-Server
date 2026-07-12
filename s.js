@@ -10,7 +10,7 @@ const { exec } = require('child_process');
 // 0. 테라리아 서버 파일 자동 다운로드 함수
 // ============================================
 const TERRARIA_SERVER_DIR = path.join(__dirname, 'terraria-server');
-const SERVER_ZIP_URL = 'https://terraria.org/api/download/pc-dedicated-server/terraria-server-1449.zip';
+const SERVER_ZIP_URL = 'https://github.com/tModLoader/tModLoader/releases/download/v2024.05.1/tModLoader.Linux.zip';
 const SERVER_ZIP_PATH = path.join(__dirname, 'terraria-server-1449.zip');
 
 // ✅ 서버 실행 파일 경로를 찾는 함수 (Linux/Mac/Windows 모두 탐색)
