@@ -10,60 +10,82 @@ const { exec } = require('child_process');
 // 0. 테라리아 서버 파일 자동 다운로드 함수
 // ============================================
 const TERRARIA_SERVER_DIR = path.join(__dirname, 'terraria-server');
-const SERVER_ZIP_URL = 'https://github.com/tModLoader/tModLoader/releases/download/v2024.05.1/tModLoader.Linux.zip';
+const SERVER_ZIP_URL = 'https://terraria.org/api/download/pc-dedicated-server/terraria-server-1449.zip';
 const SERVER_ZIP_PATH = path.join(__dirname, 'terraria-server-1449.zip');
 
-// ✅ 서버 실행 파일 경로를 찾는 함수 (Linux/Mac/Windows 모두 탐색)
+// ✅ 서버 실행 파일 경로를 찾는 함수 (정확한 경로 탐색)
 function findServerBinary() {
-    // 1. 기존 Linux 경로 확인
-    const linuxPaths = [
+    // 1. 가장 먼저 1449/Linux/TerrariaServer.bin.x86_64 확인 (가장 일반적인 경로)
+    const primaryPaths = [
+        path.join(__dirname, '1449', 'Linux', 'TerrariaServer.bin.x86_64'),
+        path.join(__dirname, 'terraria-server-1449', 'Linux', 'TerrariaServer.bin.x86_64'),
+        path.join(TERRARIA_SERVER_DIR, '1449', 'Linux', 'TerrariaServer.bin.x86_64'),
         path.join(TERRARIA_SERVER_DIR, 'Linux', 'TerrariaServer.bin.x86_64'),
-        path.join(TERRARIA_SERVER_DIR, 'Linux', 'TerrariaServer'),
+        path.join(__dirname, '1449', 'Linux', 'TerrariaServer.exe'),
+        path.join(__dirname, 'terraria-server-1449', 'Linux', 'TerrariaServer.exe'),
     ];
-    for (const p of linuxPaths) {
-        if (fs.existsSync(p)) return p;
-    }
     
-    // 2. 버전 폴더에서 Linux 찾기
-    if (fs.existsSync(TERRARIA_SERVER_DIR)) {
-        const items = fs.readdirSync(TERRARIA_SERVER_DIR);
-        for (const item of items) {
-            const itemPath = path.join(TERRARIA_SERVER_DIR, item);
-            if (fs.statSync(itemPath).isDirectory()) {
-                // Linux 폴더 확인
-                const linuxPath = path.join(itemPath, 'Linux', 'TerrariaServer.bin.x86_64');
-                if (fs.existsSync(linuxPath)) return linuxPath;
-                
-                // Mac 폴더의 exe 파일 (Mono로 실행 가능)
-                const macExePath = path.join(itemPath, 'Mac', 'Terraria Server.app', 'Contents', 'Resources', 'TerrariaServer.exe');
-                if (fs.existsSync(macExePath)) return macExePath;
-                
-                // Windows 폴더의 exe 파일 (Mono로 실행 가능)
-                const winExePath = path.join(itemPath, 'Windows', 'TerrariaServer.exe');
-                if (fs.existsSync(winExePath)) return winExePath;
-                
-                // 버전 폴더 바로 아래에 있는 경우 (1449/Linux 등)
-                const directLinux = path.join(itemPath, 'Linux', 'TerrariaServer.bin.x86_64');
-                if (fs.existsSync(directLinux)) return directLinux;
-            }
+    for (const p of primaryPaths) {
+        if (fs.existsSync(p)) {
+            console.log(`✅ 실행 파일 발견: ${p}`);
+            return p;
         }
     }
     
-    // 3. Mac/Windows 버전을 찾기 위해 1449 폴더 직접 탐색
+    // 2. terraria-server 폴더 내 모든 하위 디렉토리 탐색
+    if (fs.existsSync(TERRARIA_SERVER_DIR)) {
+        const searchDir = (dir) => {
+            try {
+                const items = fs.readdirSync(dir);
+                for (const item of items) {
+                    const itemPath = path.join(dir, item);
+                    try {
+                        const stat = fs.statSync(itemPath);
+                        if (stat.isDirectory()) {
+                            // Linux 폴더 발견하면 내부 탐색
+                            if (item === 'Linux') {
+                                const binPath = path.join(itemPath, 'TerrariaServer.bin.x86_64');
+                                if (fs.existsSync(binPath)) return binPath;
+                                const exePath = path.join(itemPath, 'TerrariaServer.exe');
+                                if (fs.existsSync(exePath)) return exePath;
+                            }
+                            // 하위 디렉토리 재귀 탐색
+                            const found = searchDir(itemPath);
+                            if (found) return found;
+                        }
+                    } catch (e) {}
+                }
+            } catch (e) {}
+            return null;
+        };
+        const found = searchDir(TERRARIA_SERVER_DIR);
+        if (found) {
+            console.log(`✅ 실행 파일 발견: ${found}`);
+            return found;
+        }
+    }
+    
+    // 3. 현재 디렉토리에서 1449 폴더 직접 탐색
     const versionDirs = ['1449', 'terraria-server-1449'];
     for (const versionDir of versionDirs) {
         const basePath = path.join(__dirname, versionDir);
         if (!fs.existsSync(basePath)) continue;
         
-        // Mac 버전
-        const macExe = path.join(basePath, 'Mac', 'Terraria Server.app', 'Contents', 'Resources', 'TerrariaServer.exe');
-        if (fs.existsSync(macExe)) return macExe;
+        // Linux 폴더 확인
+        const linuxBin = path.join(basePath, 'Linux', 'TerrariaServer.bin.x86_64');
+        if (fs.existsSync(linuxBin)) {
+            console.log(`✅ 실행 파일 발견: ${linuxBin}`);
+            return linuxBin;
+        }
         
-        // Windows 버전
-        const winExe = path.join(basePath, 'Windows', 'TerrariaServer.exe');
-        if (fs.existsSync(winExe)) return winExe;
+        const linuxExe = path.join(basePath, 'Linux', 'TerrariaServer.exe');
+        if (fs.existsSync(linuxExe)) {
+            console.log(`✅ 실행 파일 발견: ${linuxExe}`);
+            return linuxExe;
+        }
     }
     
+    console.log('❌ 실행 파일을 찾을 수 없습니다.');
     return null;
 }
 
@@ -118,7 +140,7 @@ function extractTerrariaServer() {
                 return;
             }
             console.log('✅ 압축 풀기 완료!');
-            console.log('📋 압축 풀기 결과 (일부):', stdout.split('\n').slice(0, 10).join('\n'));
+            console.log('📋 압축 풀기 결과 (일부):', stdout.split('\n').slice(0, 15).join('\n'));
             resolve();
         });
     });
@@ -160,21 +182,37 @@ async function ensureTerrariaServerFiles() {
                     try {
                         const subItems = fs.readdirSync(path.join(__dirname, item));
                         for (const sub of subItems) {
-                            console.log(`    📄 ${sub}`);
+                            const subPath = path.join(__dirname, item, sub);
+                            const subStat = fs.statSync(subPath);
+                            if (subStat.isDirectory()) {
+                                console.log(`    📂 ${sub}/`);
+                                try {
+                                    const subSubItems = fs.readdirSync(subPath);
+                                    for (const subSub of subSubItems) {
+                                        console.log(`      📄 ${subSub}`);
+                                    }
+                                } catch (e) {}
+                            } else {
+                                console.log(`    📄 ${sub}`);
+                            }
                         }
                     } catch (e) {}
                 } else {
                     console.log(`  📄 ${item}`);
                 }
             }
-            throw new Error('압축 풀기 후에도 실행 파일을 찾을 수 없습니다. (Linux 버전이 없을 수 있음)');
+            throw new Error('압축 풀기 후에도 실행 파일을 찾을 수 없습니다.');
         }
         
-        // 6. 실행 권한 추가
-        exec(`chmod +x "${binaryPath}"`, (err) => {
-            if (err) console.warn('⚠️ 실행 권한 설정 실패:', err.message);
-            else console.log('✅ 실행 권한 설정 완료');
-        });
+        // 6. 실행 권한 추가 (Linux 바이너리인 경우)
+        if (binaryPath.endsWith('.bin.x86_64') || !binaryPath.endsWith('.exe')) {
+            try {
+                execSync(`chmod +x "${binaryPath}"`);
+                console.log('✅ 실행 권한 설정 완료');
+            } catch (err) {
+                console.warn('⚠️ 실행 권한 설정 실패:', err.message);
+            }
+        }
         
         console.log(`✅ 테라리아 서버 파일 준비 완료: ${binaryPath}`);
         return binaryPath;
@@ -290,7 +328,7 @@ wss.on('connection', (ws) => {
 });
 
 // ============================================
-// 7. 테라리아 서버 시작 함수 (Mono 지원)
+// 7. 테라리아 서버 시작 함수 (Linux 네이티브)
 // ============================================
 function startTerrariaServer(binaryPath) {
     if (!fs.existsSync(binaryPath)) {
@@ -300,28 +338,12 @@ function startTerrariaServer(binaryPath) {
     }
     
     const cwd = path.dirname(binaryPath);
-    let command = binaryPath;
-    let args = [];
     
-    // exe 파일인 경우 mono로 실행
-    if (binaryPath.endsWith('.exe')) {
-        // Mono가 설치되어 있는지 확인
-        try {
-            require('child_process').execSync('which mono', { stdio: 'ignore' });
-            command = 'mono';
-            args = [binaryPath];
-            console.log('🔧 Mono를 사용하여 .exe 실행');
-        } catch (e) {
-            broadcast('[오류] Mono가 설치되어 있지 않습니다. sudo apt install mono-complete -y 를 실행하세요.');
-            console.error('❌ Mono 미설치');
-            return;
-        }
-    }
-    
-    console.log(`🚀 서버 실행: ${command} ${args.join(' ')}`);
+    console.log(`🚀 서버 실행: ${binaryPath}`);
     console.log(`📂 작업 디렉토리: ${cwd}`);
     
-    serverProcess = spawn(command, args, {
+    // Linux 네이티브 바이너리 직접 실행
+    serverProcess = spawn(binaryPath, [], {
         cwd: cwd,
         stdio: ['pipe', 'pipe', 'pipe']
     });
