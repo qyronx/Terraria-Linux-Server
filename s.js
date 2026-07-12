@@ -6,9 +6,9 @@ const path = require('path');
 const https = require('https');
 
 // ============================================
-// 메모리 제한 설정 (전역)
+// 메모리 제한 설정 (월드 생성 완료 후 적용)
 // ============================================
-const MEMORY_LIMIT_MB = 500; // 512MB로 제한 (필요에 따라 조정)
+const MEMORY_LIMIT_MB = 500;
 const MEMORY_LIMIT_KB = MEMORY_LIMIT_MB * 1024;
 
 // ============================================
@@ -18,7 +18,6 @@ const TERRARIA_SERVER_DIR = path.join(__dirname, 'terraria-server');
 const SERVER_ZIP_URL = 'https://terraria.org/api/download/pc-dedicated-server/terraria-server-1449.zip';
 const SERVER_ZIP_PATH = path.join(__dirname, 'terraria-server-1449.zip');
 
-// ✅ 서버 실행 파일 경로를 찾는 함수
 function findServerBinary() {
     const primaryPaths = [
         path.join(__dirname, '1449', 'Linux', 'TerrariaServer.bin.x86_64'),
@@ -241,11 +240,12 @@ const wss = new WebSocket.Server({
 });
 
 // ============================================
-// 3. 테라리아 서버 프로세스 관리 (메모리 제한 적용)
+// 3. 테라리아 서버 프로세스 관리
 // ============================================
 let serverProcess = null;
 let wsClients = [];
 let serverBinaryPath = null;
+let memoryLimitApplied = false; // 메모리 제한 적용 여부
 
 wss.on('connection', (ws) => {
     console.log('🟢 프론트엔드 연결됨 (클라이언트 수: ' + (wsClients.length + 1) + ')');
@@ -254,7 +254,7 @@ wss.on('connection', (ws) => {
     ws.send('[시스템] WebSocket 연결이 성공적으로 확립되었습니다.');
     
     if (!serverProcess && serverBinaryPath) {
-        console.log('🚀 테라리아 서버 시작 중... (메모리 제한: ' + MEMORY_LIMIT_MB + 'MB)');
+        console.log('🚀 테라리아 서버 시작 중...');
         startTerrariaServer(serverBinaryPath);
     } else if (!serverBinaryPath) {
         ws.send('[오류] 서버 바이너리 경로가 설정되지 않았습니다.');
@@ -283,6 +283,7 @@ wss.on('connection', (ws) => {
             console.log('⏹️ 모든 클라이언트 연결 해제 - 서버 종료');
             serverProcess.kill();
             serverProcess = null;
+            memoryLimitApplied = false;
         }
     });
     
@@ -292,7 +293,7 @@ wss.on('connection', (ws) => {
 });
 
 // ============================================
-// 4. 테라리아 서버 시작 함수 (메모리 제한 포함)
+// 4. 테라리아 서버 시작 함수 (메모리 제한: Resetting game objects 이후)
 // ============================================
 function startTerrariaServer(binaryPath) {
     if (!fs.existsSync(binaryPath)) {
@@ -304,7 +305,7 @@ function startTerrariaServer(binaryPath) {
     const cwd = path.dirname(binaryPath);
     console.log(`🚀 서버 실행: ${binaryPath}`);
     console.log(`📂 작업 디렉토리: ${cwd}`);
-    console.log(`🔒 메모리 제한: ${MEMORY_LIMIT_MB}MB (${MEMORY_LIMIT_KB}KB)`);
+    console.log(`🔓 초기: 메모리 제한 없이 실행 (월드 생성 중에는 메모리 많이 사용)`);
     
     const env = {
         ...process.env,
@@ -312,22 +313,36 @@ function startTerrariaServer(binaryPath) {
         HOME: process.env.HOME || '/tmp'
     };
     
-    // ✅ 메모리 제한을 포함한 실행 명령어
-    // ulimit -v: 가상 메모리 제한, -m: 물리 메모리 제한
-    const command = `ulimit -v ${MEMORY_LIMIT_KB} && ulimit -m ${MEMORY_LIMIT_KB} && exec "${binaryPath}"`;
-    
-    console.log(`🔧 실행 명령어: ${command}`);
-    
-    serverProcess = spawn('/bin/bash', ['-c', command], {
+    // ✅ 메모리 제한 없이 실행 (월드 생성 중 메모리 확보)
+    serverProcess = spawn(binaryPath, [], {
         cwd: cwd,
         stdio: ['pipe', 'pipe', 'pipe'],
         env: env
     });
     
+    memoryLimitApplied = false;
+    
     serverProcess.stdout.on('data', (data) => {
         const log = data.toString();
         console.log(`[서버 로그] ${log.trim()}`);
         broadcast(log);
+        
+        // 🎯 "Resetting game objects" 감지 -> 메모리 제한 적용
+        if (log.includes('Resetting game objects') && !memoryLimitApplied) {
+            console.log(`🔒 "Resetting game objects" 감지! 메모리 제한 ${MEMORY_LIMIT_MB}MB 적용 중...`);
+            memoryLimitApplied = true;
+            
+            // 서버 프로세스에 메모리 제한 적용
+            applyMemoryLimitToProcess(serverProcess.pid);
+            broadcast(`[시스템] 메모리 제한이 적용되었습니다. (${MEMORY_LIMIT_MB}MB)`);
+        }
+        
+        // 월드 생성 완료 감지 (참고용)
+        if (log.includes('World generated') || 
+            log.includes('done!') ||
+            log.includes('Listening on port')) {
+            console.log('✅ 월드 생성 완료! 서버가 정상적으로 실행 중입니다.');
+        }
     });
     
     serverProcess.stderr.on('data', (data) => {
@@ -340,13 +355,61 @@ function startTerrariaServer(binaryPath) {
         console.log(`⏹️ 테라리아 서버 종료 (코드: ${code})`);
         broadcast(`[시스템] 서버가 종료되었습니다. (코드: ${code})`);
         serverProcess = null;
+        memoryLimitApplied = false;
     });
     
     serverProcess.on('error', (err) => {
         console.error('❌ 서버 프로세스 오류:', err.message);
         broadcast(`[오류] 서버 프로세스 오류: ${err.message}`);
         serverProcess = null;
+        memoryLimitApplied = false;
     });
+}
+
+// ============================================
+// 4-1. 프로세스에 메모리 제한 적용 함수
+// ============================================
+function applyMemoryLimitToProcess(pid) {
+    if (!pid) {
+        console.warn('⚠️ PID가 없어 메모리 제한을 적용할 수 없습니다.');
+        return;
+    }
+    
+    console.log(`🔧 PID ${pid}에 메모리 제한 적용 시도...`);
+    
+    // 방법 1: prlimit (가장 정확함)
+    try {
+        execSync(`prlimit --pid ${pid} --rss=${MEMORY_LIMIT_KB}:${MEMORY_LIMIT_KB} --data=${MEMORY_LIMIT_KB}:${MEMORY_LIMIT_KB} 2>/dev/null`);
+        console.log(`✅ prlimit 메모리 제한 적용 완료: ${MEMORY_LIMIT_MB}MB`);
+        return;
+    } catch (err) {
+        // prlimit 실패 시 무시
+    }
+    
+    // 방법 2: ulimit (쉘을 통해 적용)
+    try {
+        execSync(`bash -c "ulimit -v ${MEMORY_LIMIT_KB} && echo 'ulimit applied'"`);
+        console.log(`✅ ulimit 메모리 제한 적용 완료: ${MEMORY_LIMIT_MB}MB`);
+        return;
+    } catch (err) {
+        // ulimit 실패 시 무시
+    }
+    
+    // 방법 3: cgroups (Docker 환경)
+    try {
+        const cgroupPath = `/sys/fs/cgroup/memory/terraria_${pid}`;
+        if (fs.existsSync('/sys/fs/cgroup/memory')) {
+            execSync(`mkdir -p ${cgroupPath} 2>/dev/null`);
+            execSync(`echo ${MEMORY_LIMIT_KB * 1024} > ${cgroupPath}/memory.limit_in_bytes 2>/dev/null`);
+            execSync(`echo ${pid} > ${cgroupPath}/tasks 2>/dev/null`);
+            console.log(`✅ cgroups 메모리 제한 적용 완료: ${MEMORY_LIMIT_MB}MB`);
+            return;
+        }
+    } catch (err) {
+        // cgroups 실패 시 무시
+    }
+    
+    console.warn(`⚠️ 메모리 제한 적용 실패. (PID: ${pid})`);
 }
 
 // ============================================
@@ -372,7 +435,7 @@ const PORT = process.env.PORT || 10000;
 async function startServer() {
     console.log('========================================');
     console.log('⚔️ 테라리아 웹 콘솔 서버');
-    console.log(`🔒 전역 메모리 제한: ${MEMORY_LIMIT_MB}MB`);
+    console.log(`🔒 메모리 제한: ${MEMORY_LIMIT_MB}MB (월드 생성 완료 후 적용)`);
     console.log('========================================');
     console.log(`📂 현재 디렉토리: ${__dirname}`);
     console.log(`🔌 포트: ${PORT}`);
@@ -395,7 +458,8 @@ async function startServer() {
         console.log(`🔌 WebSocket 서버도 함께 실행됨`);
         console.log('========================================');
         if (serverBinaryPath) {
-            console.log(`💡 프론트엔드에서 접속하면 서버가 자동 시작됩니다. (메모리 제한: ${MEMORY_LIMIT_MB}MB)`);
+            console.log(`💡 프론트엔드에서 접속하면 서버가 자동 시작됩니다.`);
+            console.log(`📌 "Resetting game objects" 로그 후 메모리 제한 ${MEMORY_LIMIT_MB}MB 적용`);
         } else {
             console.log('⚠️ 테라리아 서버 파일이 없어 서버를 시작할 수 없습니다.');
         }
