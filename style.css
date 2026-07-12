@@ -1,0 +1,237 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #0d1117;
+    color: #c9d1d9;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.container {
+    width: 100%;
+    max-width: 1000px;
+    height: 90vh;
+    background: #161b22;
+    border-radius: 12px;
+    border: 1px solid #30363d;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+header {
+    padding: 16px 24px;
+    background: #0d1117;
+    border-bottom: 1px solid #30363d;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+header h1 {
+    font-size: 20px;
+    font-weight: 600;
+}
+
+.status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+}
+
+.status .connected {
+    color: #3fb950;
+}
+
+.status .disconnected {
+    color: #f85149;
+}
+
+.status .connecting {
+    color: #d29922;
+}
+
+main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    gap: 12px;
+    overflow: hidden;
+}
+
+.log-container {
+    flex: 1;
+    background: #0d1117;
+    border-radius: 8px;
+    border: 1px solid #30363d;
+    padding: 12px;
+    overflow-y: auto;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 200px;
+}
+
+.log-container .log-placeholder {
+    color: #8b949e;
+    font-style: italic;
+}
+
+.log-container .log-entry {
+    padding: 2px 0;
+    border-bottom: 1px solid rgba(48, 54, 61, 0.3);
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.log-container .log-entry:last-child {
+    border-bottom: none;
+}
+
+.log-container .log-error {
+    color: #f85149;
+}
+
+.log-container .log-system {
+    color: #d29922;
+}
+
+.log-container .log-player {
+    color: #58a6ff;
+}
+
+/* 스크롤바 스타일 */
+.log-container::-webkit-scrollbar {
+    width: 6px;
+}
+
+.log-container::-webkit-scrollbar-track {
+    background: #0d1117;
+}
+
+.log-container::-webkit-scrollbar-thumb {
+    background: #30363d;
+    border-radius: 3px;
+}
+
+.log-container::-webkit-scrollbar-thumb:hover {
+    background: #484f58;
+}
+
+.input-area {
+    display: flex;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.input-area input {
+    flex: 1;
+    padding: 10px 14px;
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    color: #c9d1d9;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.input-area input:focus {
+    border-color: #58a6ff;
+}
+
+.input-area input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.input-area button {
+    padding: 10px 20px;
+    background: #238636;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+    white-space: nowrap;
+}
+
+.input-area button:hover:not(:disabled) {
+    background: #2ea043;
+}
+
+.input-area button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.input-area button#clearButton {
+    background: #21262d;
+    color: #c9d1d9;
+}
+
+.input-area button#clearButton:hover {
+    background: #30363d;
+}
+
+.quick-commands {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+
+.quick-commands .quick-cmd {
+    padding: 6px 14px;
+    background: #21262d;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    color: #c9d1d9;
+    font-size: 12px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.quick-commands .quick-cmd:hover {
+    background: #30363d;
+    border-color: #58a6ff;
+}
+
+/* 반응형 */
+@media (max-width: 600px) {
+    .container {
+        height: 100vh;
+        border-radius: 0;
+    }
+    
+    .input-area {
+        flex-wrap: wrap;
+    }
+    
+    .input-area input {
+        min-width: 100%;
+        order: 1;
+    }
+    
+    .input-area button {
+        flex: 1;
+    }
+    
+    .quick-commands {
+        justify-content: center;
+    }
+}
