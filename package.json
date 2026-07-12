@@ -1,20 +1,12 @@
 {
   "name": "terraria-web-console",
   "version": "1.0.0",
-  "description": "테라리아 서버 웹 콘솔 - 실시간 로그 및 명령어 제어",
+  "description": "테라리아 서버 웹 콘솔",
   "main": "s.js",
   "scripts": {
     "start": "node s.js",
-    "dev": "node s.js"
+    "postinstall": "apt-get update && apt-get install -y mono-complete unzip wget"
   },
-  "keywords": [
-    "terraria",
-    "server",
-    "console",
-    "websocket"
-  ],
-  "author": "",
-  "license": "MIT",
   "dependencies": {
     "ws": "^8.14.2"
   },
