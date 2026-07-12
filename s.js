@@ -4,7 +4,6 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
-const { exec } = require('child_process');
 
 // ============================================
 // 0. 테라리아 서버 파일 자동 다운로드 함수
