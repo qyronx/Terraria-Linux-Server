@@ -5,7 +5,7 @@
   "main": "s.js",
   "scripts": {
     "start": "node s.js",
-    "postinstall": "apt-get update && apt-get install -y mono-complete unzip wget"
+    "build": "chmod +x build.sh && ./build.sh"
   },
   "dependencies": {
     "ws": "^8.14.2"
