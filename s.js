@@ -13,6 +13,31 @@ const TERRARIA_SERVER_DIR = path.join(__dirname, 'terraria-server');
 const SERVER_ZIP_URL = 'https://terraria.org/api/download/pc-dedicated-server/terraria-server-1449.zip';
 const SERVER_ZIP_PATH = path.join(__dirname, 'terraria-server-1449.zip');
 
+// ✅ 서버 실행 파일 경로를 찾는 함수 (버전 폴더명 자동 인식)
+function findServerBinary() {
+    // 1. 기존 경로 확인 (terraria-server/Linux/TerrariaServer.bin.x86_64)
+    const legacyPath = path.join(TERRARIA_SERVER_DIR, 'Linux', 'TerrariaServer.bin.x86_64');
+    if (fs.existsSync(legacyPath)) {
+        return legacyPath;
+    }
+    
+    // 2. 버전 폴더가 있는 경우 (terraria-server-1449/Linux/TerrariaServer.bin.x86_64)
+    if (fs.existsSync(TERRARIA_SERVER_DIR)) {
+        const items = fs.readdirSync(TERRARIA_SERVER_DIR);
+        for (const item of items) {
+            const itemPath = path.join(TERRARIA_SERVER_DIR, item);
+            if (fs.statSync(itemPath).isDirectory() && item.startsWith('terraria-server-')) {
+                const binaryPath = path.join(itemPath, 'Linux', 'TerrariaServer.bin.x86_64');
+                if (fs.existsSync(binaryPath)) {
+                    return binaryPath;
+                }
+            }
+        }
+    }
+    
+    return null;
+}
+
 function downloadTerrariaServer() {
     return new Promise((resolve, reject) => {
         console.log('📥 테라리아 서버 파일 다운로드 중...');
@@ -55,56 +80,63 @@ function downloadTerrariaServer() {
 function extractTerrariaServer() {
     return new Promise((resolve, reject) => {
         console.log('📦 압축 풀기 중...');
+        console.log(`📂 압축 풀기 대상: ${SERVER_ZIP_PATH}`);
+        console.log(`📂 압축 풀기 위치: ${__dirname}`);
         
-        // unzip 명령어로 압축 풀기
+        // unzip 명령어로 압축 풀기 (상세 출력)
         exec(`unzip -o ${SERVER_ZIP_PATH} -d ${__dirname}`, (error, stdout, stderr) => {
             if (error) {
-                reject(new Error(`압축 풀기 실패: ${error.message}`));
+                reject(new Error(`압축 풀기 실패: ${error.message}\n${stderr}`));
                 return;
             }
             console.log('✅ 압축 풀기 완료!');
+            console.log('📋 압축 풀기 결과:', stdout);
             resolve();
         });
     });
 }
 
 async function ensureTerrariaServerFiles() {
-    // 이미 terraria-server 폴더가 있고 실행 파일이 있으면 스킵
-    const serverBinaryPath = path.join(TERRARIA_SERVER_DIR, 'Linux', 'TerrariaServer.bin.x86_64');
-    if (fs.existsSync(serverBinaryPath)) {
-        console.log('✅ 테라리아 서버 파일이 이미 존재합니다.');
-        return true;
+    // 1. 먼저 실행 파일이 이미 있는지 확인
+    const existingBinary = findServerBinary();
+    if (existingBinary) {
+        console.log(`✅ 테라리아 서버 파일이 이미 존재합니다: ${existingBinary}`);
+        return existingBinary;
     }
     
     console.log('⚠️ 테라리아 서버 파일이 없습니다. 자동 다운로드를 시작합니다...');
     
     try {
-        // 1. 다운로드
+        // 2. 다운로드
         await downloadTerrariaServer();
         
-        // 2. 압축 풀기
+        // 3. 압축 풀기
         await extractTerrariaServer();
         
-        // 3. 다운로드한 zip 파일 삭제 (선택사항)
+        // 4. 다운로드한 zip 파일 삭제 (선택사항)
         if (fs.existsSync(SERVER_ZIP_PATH)) {
             fs.unlinkSync(SERVER_ZIP_PATH);
             console.log('🗑️ 임시 zip 파일 삭제됨');
         }
         
-        // 4. 실행 권한 추가
-        if (fs.existsSync(serverBinaryPath)) {
-            exec(`chmod +x ${serverBinaryPath}`, (err) => {
-                if (err) console.warn('⚠️ 실행 권한 설정 실패:', err.message);
-                else console.log('✅ 실행 권한 설정 완료');
-            });
+        // 5. 압축 풀린 폴더 구조 확인 및 실행 파일 찾기
+        const binaryPath = findServerBinary();
+        if (!binaryPath) {
+            throw new Error('압축 풀기 후에도 실행 파일을 찾을 수 없습니다.');
         }
         
-        console.log('✅ 테라리아 서버 파일 준비 완료!');
-        return true;
+        // 6. 실행 권한 추가
+        exec(`chmod +x "${binaryPath}"`, (err) => {
+            if (err) console.warn('⚠️ 실행 권한 설정 실패:', err.message);
+            else console.log('✅ 실행 권한 설정 완료');
+        });
+        
+        console.log(`✅ 테라리아 서버 파일 준비 완료: ${binaryPath}`);
+        return binaryPath;
         
     } catch (error) {
         console.error('❌ 파일 준비 실패:', error.message);
-        return false;
+        throw error;
     }
 }
 
@@ -170,6 +202,7 @@ const wss = new WebSocket.Server({ server: httpServer });
 let serverProcess = null;
 let wsClients = [];
 let isServerReady = false;
+let serverBinaryPath = null;
 
 // WebSocket 연결 처리
 wss.on('connection', (ws) => {
@@ -177,9 +210,12 @@ wss.on('connection', (ws) => {
     wsClients.push(ws);
     
     // 4. 클라이언트가 연결되면 테라리아 서버 시작
-    if (!serverProcess) {
+    if (!serverProcess && serverBinaryPath) {
         console.log('🚀 테라리아 서버 시작 중...');
-        startTerrariaServer();
+        startTerrariaServer(serverBinaryPath);
+    } else if (!serverBinaryPath) {
+        ws.send('[오류] 서버 바이너리 경로가 설정되지 않았습니다.');
+        console.error('❌ 서버 바이너리 경로 없음');
     }
     
     // 5. 클라이언트로부터 명령어 수신
@@ -212,18 +248,22 @@ wss.on('connection', (ws) => {
 // ============================================
 // 7. 테라리아 서버 시작 함수
 // ============================================
-function startTerrariaServer() {
-    const serverPath = path.join(TERRARIA_SERVER_DIR, 'Linux', 'TerrariaServer.bin.x86_64');
-    
+function startTerrariaServer(binaryPath) {
     // 파일 존재 여부 확인
-    if (!fs.existsSync(serverPath)) {
-        broadcast('[오류] 테라리아 서버 파일을 찾을 수 없습니다. 다시 다운로드해주세요.');
-        console.error('❌ 서버 파일 없음:', serverPath);
+    if (!fs.existsSync(binaryPath)) {
+        broadcast(`[오류] 테라리아 서버 파일을 찾을 수 없습니다: ${binaryPath}`);
+        console.error('❌ 서버 파일 없음:', binaryPath);
         return;
     }
     
-    serverProcess = spawn(serverPath, [], {
-        cwd: path.join(TERRARIA_SERVER_DIR, 'Linux'),
+    // 실행 파일이 있는 디렉토리로 cwd 설정
+    const cwd = path.dirname(binaryPath);
+    
+    console.log(`🚀 서버 실행: ${binaryPath}`);
+    console.log(`📂 작업 디렉토리: ${cwd}`);
+    
+    serverProcess = spawn(binaryPath, [], {
+        cwd: cwd,
         stdio: ['pipe', 'pipe', 'pipe']
     });
     
@@ -278,21 +318,36 @@ async function startServer() {
     console.log('========================================');
     console.log('⚔️ 테라리아 웹 콘솔 서버');
     console.log('========================================');
+    console.log(`📂 현재 디렉토리: ${__dirname}`);
     
-    // 테라리아 서버 파일 확인 및 자동 다운로드
-    const isReady = await ensureTerrariaServerFiles();
-    
-    if (!isReady) {
-        console.error('❌ 테라리아 서버 파일 준비 실패. 서버를 종료합니다.');
-        process.exit(1);
+    // 현재 디렉토리 파일 목록 출력 (디버깅용)
+    try {
+        const files = fs.readdirSync(__dirname);
+        console.log('📁 현재 디렉토리 파일 목록:', files.join(', '));
+    } catch (e) {
+        console.log('📁 파일 목록 읽기 실패:', e.message);
     }
     
-    // HTTP + WebSocket 서버 시작
+    try {
+        // 테라리아 서버 파일 확인 및 자동 다운로드
+        serverBinaryPath = await ensureTerrariaServerFiles();
+        console.log(`✅ 서버 바이너리 경로: ${serverBinaryPath}`);
+    } catch (error) {
+        console.error('❌ 테라리아 서버 파일 준비 실패:', error.message);
+        console.log('⚠️ 서버는 계속 실행되지만, 테라리아 서버는 시작되지 않습니다.');
+    }
+    
+    // HTTP + WebSocket 서버 시작 (파일 준비 실패해도 웹 서버는 실행)
     httpServer.listen(PORT, () => {
         console.log(`🌐 웹 서버 실행 중: http://localhost:${PORT}`);
         console.log(`🔌 WebSocket 서버도 함께 실행됨`);
         console.log('========================================');
-        console.log('💡 프론트엔드에서 접속하면 서버가 자동 시작됩니다.');
+        if (serverBinaryPath) {
+            console.log('💡 프론트엔드에서 접속하면 서버가 자동 시작됩니다.');
+        } else {
+            console.log('⚠️ 테라리아 서버 파일이 없어 서버를 시작할 수 없습니다.');
+            console.log('📌 로그를 확인하고 수동으로 파일을 준비해주세요.');
+        }
         console.log('========================================');
     });
 }
