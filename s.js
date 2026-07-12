@@ -13,26 +13,55 @@ const TERRARIA_SERVER_DIR = path.join(__dirname, 'terraria-server');
 const SERVER_ZIP_URL = 'https://terraria.org/api/download/pc-dedicated-server/terraria-server-1449.zip';
 const SERVER_ZIP_PATH = path.join(__dirname, 'terraria-server-1449.zip');
 
-// ✅ 서버 실행 파일 경로를 찾는 함수 (버전 폴더명 자동 인식)
+// ✅ 서버 실행 파일 경로를 찾는 함수 (Linux/Mac/Windows 모두 탐색)
 function findServerBinary() {
-    // 1. 기존 경로 확인 (terraria-server/Linux/TerrariaServer.bin.x86_64)
-    const legacyPath = path.join(TERRARIA_SERVER_DIR, 'Linux', 'TerrariaServer.bin.x86_64');
-    if (fs.existsSync(legacyPath)) {
-        return legacyPath;
+    // 1. 기존 Linux 경로 확인
+    const linuxPaths = [
+        path.join(TERRARIA_SERVER_DIR, 'Linux', 'TerrariaServer.bin.x86_64'),
+        path.join(TERRARIA_SERVER_DIR, 'Linux', 'TerrariaServer'),
+    ];
+    for (const p of linuxPaths) {
+        if (fs.existsSync(p)) return p;
     }
     
-    // 2. 버전 폴더가 있는 경우 (terraria-server-1449/Linux/TerrariaServer.bin.x86_64)
+    // 2. 버전 폴더에서 Linux 찾기
     if (fs.existsSync(TERRARIA_SERVER_DIR)) {
         const items = fs.readdirSync(TERRARIA_SERVER_DIR);
         for (const item of items) {
             const itemPath = path.join(TERRARIA_SERVER_DIR, item);
-            if (fs.statSync(itemPath).isDirectory() && item.startsWith('terraria-server-')) {
-                const binaryPath = path.join(itemPath, 'Linux', 'TerrariaServer.bin.x86_64');
-                if (fs.existsSync(binaryPath)) {
-                    return binaryPath;
-                }
+            if (fs.statSync(itemPath).isDirectory()) {
+                // Linux 폴더 확인
+                const linuxPath = path.join(itemPath, 'Linux', 'TerrariaServer.bin.x86_64');
+                if (fs.existsSync(linuxPath)) return linuxPath;
+                
+                // Mac 폴더의 exe 파일 (Mono로 실행 가능)
+                const macExePath = path.join(itemPath, 'Mac', 'Terraria Server.app', 'Contents', 'Resources', 'TerrariaServer.exe');
+                if (fs.existsSync(macExePath)) return macExePath;
+                
+                // Windows 폴더의 exe 파일 (Mono로 실행 가능)
+                const winExePath = path.join(itemPath, 'Windows', 'TerrariaServer.exe');
+                if (fs.existsSync(winExePath)) return winExePath;
+                
+                // 버전 폴더 바로 아래에 있는 경우 (1449/Linux 등)
+                const directLinux = path.join(itemPath, 'Linux', 'TerrariaServer.bin.x86_64');
+                if (fs.existsSync(directLinux)) return directLinux;
             }
         }
+    }
+    
+    // 3. Mac/Windows 버전을 찾기 위해 1449 폴더 직접 탐색
+    const versionDirs = ['1449', 'terraria-server-1449'];
+    for (const versionDir of versionDirs) {
+        const basePath = path.join(__dirname, versionDir);
+        if (!fs.existsSync(basePath)) continue;
+        
+        // Mac 버전
+        const macExe = path.join(basePath, 'Mac', 'Terraria Server.app', 'Contents', 'Resources', 'TerrariaServer.exe');
+        if (fs.existsSync(macExe)) return macExe;
+        
+        // Windows 버전
+        const winExe = path.join(basePath, 'Windows', 'TerrariaServer.exe');
+        if (fs.existsSync(winExe)) return winExe;
     }
     
     return null;
@@ -83,14 +112,13 @@ function extractTerrariaServer() {
         console.log(`📂 압축 풀기 대상: ${SERVER_ZIP_PATH}`);
         console.log(`📂 압축 풀기 위치: ${__dirname}`);
         
-        // unzip 명령어로 압축 풀기 (상세 출력)
         exec(`unzip -o ${SERVER_ZIP_PATH} -d ${__dirname}`, (error, stdout, stderr) => {
             if (error) {
                 reject(new Error(`압축 풀기 실패: ${error.message}\n${stderr}`));
                 return;
             }
             console.log('✅ 압축 풀기 완료!');
-            console.log('📋 압축 풀기 결과:', stdout);
+            console.log('📋 압축 풀기 결과 (일부):', stdout.split('\n').slice(0, 10).join('\n'));
             resolve();
         });
     });
@@ -113,7 +141,7 @@ async function ensureTerrariaServerFiles() {
         // 3. 압축 풀기
         await extractTerrariaServer();
         
-        // 4. 다운로드한 zip 파일 삭제 (선택사항)
+        // 4. 다운로드한 zip 파일 삭제
         if (fs.existsSync(SERVER_ZIP_PATH)) {
             fs.unlinkSync(SERVER_ZIP_PATH);
             console.log('🗑️ 임시 zip 파일 삭제됨');
@@ -122,7 +150,24 @@ async function ensureTerrariaServerFiles() {
         // 5. 압축 풀린 폴더 구조 확인 및 실행 파일 찾기
         const binaryPath = findServerBinary();
         if (!binaryPath) {
-            throw new Error('압축 풀기 후에도 실행 파일을 찾을 수 없습니다.');
+            // 디버깅: 현재 디렉토리 구조 출력
+            console.log('📁 현재 디렉토리 구조:');
+            const items = fs.readdirSync(__dirname);
+            for (const item of items) {
+                const stat = fs.statSync(path.join(__dirname, item));
+                if (stat.isDirectory()) {
+                    console.log(`  📂 ${item}/`);
+                    try {
+                        const subItems = fs.readdirSync(path.join(__dirname, item));
+                        for (const sub of subItems) {
+                            console.log(`    📄 ${sub}`);
+                        }
+                    } catch (e) {}
+                } else {
+                    console.log(`  📄 ${item}`);
+                }
+            }
+            throw new Error('압축 풀기 후에도 실행 파일을 찾을 수 없습니다. (Linux 버전이 없을 수 있음)');
         }
         
         // 6. 실행 권한 추가
@@ -235,7 +280,6 @@ wss.on('connection', (ws) => {
         console.log('🔴 프론트엔드 연결 종료');
         wsClients = wsClients.filter(client => client !== ws);
         
-        // 모든 클라이언트가 연결 해제되면 서버도 종료 (선택사항)
         if (wsClients.length === 0 && serverProcess) {
             console.log('⏹️ 모든 클라이언트 연결 해제 - 서버 종료');
             serverProcess.kill();
@@ -246,30 +290,44 @@ wss.on('connection', (ws) => {
 });
 
 // ============================================
-// 7. 테라리아 서버 시작 함수
+// 7. 테라리아 서버 시작 함수 (Mono 지원)
 // ============================================
 function startTerrariaServer(binaryPath) {
-    // 파일 존재 여부 확인
     if (!fs.existsSync(binaryPath)) {
         broadcast(`[오류] 테라리아 서버 파일을 찾을 수 없습니다: ${binaryPath}`);
         console.error('❌ 서버 파일 없음:', binaryPath);
         return;
     }
     
-    // 실행 파일이 있는 디렉토리로 cwd 설정
     const cwd = path.dirname(binaryPath);
+    let command = binaryPath;
+    let args = [];
     
-    console.log(`🚀 서버 실행: ${binaryPath}`);
+    // exe 파일인 경우 mono로 실행
+    if (binaryPath.endsWith('.exe')) {
+        // Mono가 설치되어 있는지 확인
+        try {
+            require('child_process').execSync('which mono', { stdio: 'ignore' });
+            command = 'mono';
+            args = [binaryPath];
+            console.log('🔧 Mono를 사용하여 .exe 실행');
+        } catch (e) {
+            broadcast('[오류] Mono가 설치되어 있지 않습니다. sudo apt install mono-complete -y 를 실행하세요.');
+            console.error('❌ Mono 미설치');
+            return;
+        }
+    }
+    
+    console.log(`🚀 서버 실행: ${command} ${args.join(' ')}`);
     console.log(`📂 작업 디렉토리: ${cwd}`);
     
-    serverProcess = spawn(binaryPath, [], {
+    serverProcess = spawn(command, args, {
         cwd: cwd,
         stdio: ['pipe', 'pipe', 'pipe']
     });
     
     isServerReady = true;
     
-    // 8. 서버 로그를 모든 WebSocket 클라이언트에 전송
     serverProcess.stdout.on('data', (data) => {
         const log = data.toString();
         console.log(`[서버 로그] ${log.trim()}`);
@@ -282,7 +340,6 @@ function startTerrariaServer(binaryPath) {
         broadcast(errorLog);
     });
     
-    // 9. 서버 프로세스 종료 감지
     serverProcess.on('close', (code) => {
         console.log(`⏹️ 테라리아 서버 종료 (코드: ${code})`);
         broadcast(`[시스템] 서버가 종료되었습니다. (코드: ${code})`);
@@ -320,24 +377,18 @@ async function startServer() {
     console.log('========================================');
     console.log(`📂 현재 디렉토리: ${__dirname}`);
     
-    // 현재 디렉토리 파일 목록 출력 (디버깅용)
     try {
         const files = fs.readdirSync(__dirname);
         console.log('📁 현재 디렉토리 파일 목록:', files.join(', '));
-    } catch (e) {
-        console.log('📁 파일 목록 읽기 실패:', e.message);
-    }
+    } catch (e) {}
     
     try {
-        // 테라리아 서버 파일 확인 및 자동 다운로드
         serverBinaryPath = await ensureTerrariaServerFiles();
         console.log(`✅ 서버 바이너리 경로: ${serverBinaryPath}`);
     } catch (error) {
         console.error('❌ 테라리아 서버 파일 준비 실패:', error.message);
-        console.log('⚠️ 서버는 계속 실행되지만, 테라리아 서버는 시작되지 않습니다.');
     }
     
-    // HTTP + WebSocket 서버 시작 (파일 준비 실패해도 웹 서버는 실행)
     httpServer.listen(PORT, () => {
         console.log(`🌐 웹 서버 실행 중: http://localhost:${PORT}`);
         console.log(`🔌 WebSocket 서버도 함께 실행됨`);
@@ -346,30 +397,21 @@ async function startServer() {
             console.log('💡 프론트엔드에서 접속하면 서버가 자동 시작됩니다.');
         } else {
             console.log('⚠️ 테라리아 서버 파일이 없어 서버를 시작할 수 없습니다.');
-            console.log('📌 로그를 확인하고 수동으로 파일을 준비해주세요.');
         }
         console.log('========================================');
     });
 }
 
-// 서버 시작
 startServer();
 
-// ============================================
-// 10. 프로세스 종료 처리
-// ============================================
 process.on('SIGINT', () => {
     console.log('\n🛑 서버 종료 신호 수신');
-    if (serverProcess) {
-        serverProcess.kill();
-    }
+    if (serverProcess) serverProcess.kill();
     process.exit(0);
 });
 
 process.on('SIGTERM', () => {
     console.log('\n🛑 서버 종료 신호 수신');
-    if (serverProcess) {
-        serverProcess.kill();
-    }
+    if (serverProcess) serverProcess.kill();
     process.exit(0);
 });
