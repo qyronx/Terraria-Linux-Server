@@ -4,8 +4,7 @@
   "description": "테라리아 서버 웹 콘솔",
   "main": "s.js",
   "scripts": {
-    "start": "node s.js",
-    "build": "chmod +x build.sh && ./build.sh"
+    "start": "node s.js"
   },
   "dependencies": {
     "ws": "^8.14.2"
