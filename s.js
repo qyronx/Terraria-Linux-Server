@@ -6,6 +6,12 @@ const path = require('path');
 const https = require('https');
 
 // ============================================
+// 메모리 제한 설정 (전역)
+// ============================================
+const MEMORY_LIMIT_MB = 512; // 512MB로 제한 (필요에 따라 조정)
+const MEMORY_LIMIT_KB = MEMORY_LIMIT_MB * 1024;
+
+// ============================================
 // 0. 테라리아 서버 파일 자동 다운로드 함수
 // ============================================
 const TERRARIA_SERVER_DIR = path.join(__dirname, 'terraria-server');
@@ -14,7 +20,6 @@ const SERVER_ZIP_PATH = path.join(__dirname, 'terraria-server-1449.zip');
 
 // ✅ 서버 실행 파일 경로를 찾는 함수
 function findServerBinary() {
-    // 1. 가장 먼저 1449/Linux/TerrariaServer.bin.x86_64 확인
     const primaryPaths = [
         path.join(__dirname, '1449', 'Linux', 'TerrariaServer.bin.x86_64'),
         path.join(__dirname, 'terraria-server-1449', 'Linux', 'TerrariaServer.bin.x86_64'),
@@ -29,7 +34,6 @@ function findServerBinary() {
         }
     }
     
-    // 2. 모든 하위 디렉토리 탐색
     function searchDir(dir) {
         try {
             const items = fs.readdirSync(dir);
@@ -59,7 +63,6 @@ function findServerBinary() {
         }
     }
     
-    // 3. 현재 디렉토리에서 직접 탐색
     const versionDirs = ['1449', 'terraria-server-1449'];
     for (const versionDir of versionDirs) {
         const basePath = path.join(__dirname, versionDir);
@@ -187,10 +190,9 @@ async function ensureTerrariaServerFiles() {
 }
 
 // ============================================
-// 1. HTTP 서버 생성 (정적 파일 제공용)
+// 1. HTTP 서버 생성
 // ============================================
 const httpServer = http.createServer((req, res) => {
-    // CORS 헤더 추가 (Render에서 필요할 수 있음)
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -235,11 +237,11 @@ const httpServer = http.createServer((req, res) => {
 // ============================================
 const wss = new WebSocket.Server({ 
     server: httpServer,
-    path: '/'  // 명시적으로 경로 지정
+    path: '/'
 });
 
 // ============================================
-// 3. 테라리아 서버 프로세스 관리
+// 3. 테라리아 서버 프로세스 관리 (메모리 제한 적용)
 // ============================================
 let serverProcess = null;
 let wsClients = [];
@@ -249,11 +251,10 @@ wss.on('connection', (ws) => {
     console.log('🟢 프론트엔드 연결됨 (클라이언트 수: ' + (wsClients.length + 1) + ')');
     wsClients.push(ws);
     
-    // 연결 성공 메시지 전송
     ws.send('[시스템] WebSocket 연결이 성공적으로 확립되었습니다.');
     
     if (!serverProcess && serverBinaryPath) {
-        console.log('🚀 테라리아 서버 시작 중...');
+        console.log('🚀 테라리아 서버 시작 중... (메모리 제한: ' + MEMORY_LIMIT_MB + 'MB)');
         startTerrariaServer(serverBinaryPath);
     } else if (!serverBinaryPath) {
         ws.send('[오류] 서버 바이너리 경로가 설정되지 않았습니다.');
@@ -291,7 +292,7 @@ wss.on('connection', (ws) => {
 });
 
 // ============================================
-// 4. 테라리아 서버 시작 함수
+// 4. 테라리아 서버 시작 함수 (메모리 제한 포함)
 // ============================================
 function startTerrariaServer(binaryPath) {
     if (!fs.existsSync(binaryPath)) {
@@ -303,15 +304,21 @@ function startTerrariaServer(binaryPath) {
     const cwd = path.dirname(binaryPath);
     console.log(`🚀 서버 실행: ${binaryPath}`);
     console.log(`📂 작업 디렉토리: ${cwd}`);
+    console.log(`🔒 메모리 제한: ${MEMORY_LIMIT_MB}MB (${MEMORY_LIMIT_KB}KB)`);
     
-    // 환경 변수 설정 (서버가 제대로 실행되도록)
     const env = {
         ...process.env,
         LD_LIBRARY_PATH: cwd + ':' + (process.env.LD_LIBRARY_PATH || ''),
         HOME: process.env.HOME || '/tmp'
     };
     
-    serverProcess = spawn(binaryPath, [], {
+    // ✅ 메모리 제한을 포함한 실행 명령어
+    // ulimit -v: 가상 메모리 제한, -m: 물리 메모리 제한
+    const command = `ulimit -v ${MEMORY_LIMIT_KB} && ulimit -m ${MEMORY_LIMIT_KB} && exec "${binaryPath}"`;
+    
+    console.log(`🔧 실행 명령어: ${command}`);
+    
+    serverProcess = spawn('/bin/bash', ['-c', command], {
         cwd: cwd,
         stdio: ['pipe', 'pipe', 'pipe'],
         env: env
@@ -365,6 +372,7 @@ const PORT = process.env.PORT || 10000;
 async function startServer() {
     console.log('========================================');
     console.log('⚔️ 테라리아 웹 콘솔 서버');
+    console.log(`🔒 전역 메모리 제한: ${MEMORY_LIMIT_MB}MB`);
     console.log('========================================');
     console.log(`📂 현재 디렉토리: ${__dirname}`);
     console.log(`🔌 포트: ${PORT}`);
@@ -382,20 +390,18 @@ async function startServer() {
         console.log('⚠️ 웹 서버는 계속 실행됩니다 (테라리아 서버 없이)');
     }
     
-    // 모든 인터페이스에서 수신 대기 (0.0.0.0)
     httpServer.listen(PORT, '0.0.0.0', () => {
         console.log(`🌐 웹 서버 실행 중: http://0.0.0.0:${PORT}`);
-        console.log(`🔌 WebSocket 서버도 함께 실행됨 (ws://0.0.0.0:${PORT})`);
+        console.log(`🔌 WebSocket 서버도 함께 실행됨`);
         console.log('========================================');
         if (serverBinaryPath) {
-            console.log('💡 프론트엔드에서 접속하면 서버가 자동 시작됩니다.');
+            console.log(`💡 프론트엔드에서 접속하면 서버가 자동 시작됩니다. (메모리 제한: ${MEMORY_LIMIT_MB}MB)`);
         } else {
             console.log('⚠️ 테라리아 서버 파일이 없어 서버를 시작할 수 없습니다.');
         }
         console.log('========================================');
     });
     
-    // 서버 오류 처리
     httpServer.on('error', (error) => {
         console.error('❌ HTTP 서버 오류:', error.message);
         if (error.code === 'EADDRINUSE') {
@@ -404,23 +410,17 @@ async function startServer() {
     });
 }
 
-// 서버 시작
 startServer();
 
-// 프로세스 종료 처리
 process.on('SIGINT', () => {
     console.log('\n🛑 서버 종료 신호 수신');
-    if (serverProcess) {
-        serverProcess.kill();
-    }
+    if (serverProcess) serverProcess.kill();
     process.exit(0);
 });
 
 process.on('SIGTERM', () => {
     console.log('\n🛑 서버 종료 신호 수신');
-    if (serverProcess) {
-        serverProcess.kill();
-    }
+    if (serverProcess) serverProcess.kill();
     process.exit(0);
 });
 
