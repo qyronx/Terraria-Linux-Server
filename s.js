@@ -1,4 +1,4 @@
-const { spawn } = require('child_process');
+const { spawn, exec, execSync } = require('child_process');
 const WebSocket = require('ws');
 const http = require('http');
 const fs = require('fs');
